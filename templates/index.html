@@ -18,7 +18,71 @@
   <div id="completeBanner" class="complete-banner hidden">✅ 全部字节已确认，传完！</div>
 </header>
 
-<main class="layout">
+<main class="page">
+  <!-- ============ 夜间备份排班 / 双路整班排线 ============ -->
+  <section class="card schedule-card" id="scheduleCard">
+    <div class="sched-head">
+      <h2>🌙 夜间备份排班 · A/B 双路整班排线
+        <span id="orderCount" class="count-badge">0/12 单</span>
+      </h2>
+      <p class="hint">
+        按分支录入备份的<b>起止分钟、固定报文载荷、保底速率</b>，单班最多 12 单。
+        每单全程只走一条线：<code>载荷 + 封装开销 ≤ 该线 MTU</code>；
+        同线任一时刻重叠预约的速率和 <code>≤ 该线可用带宽</code>。
+        加单或应用新线路参数都会枚举整班重排；可先“试排”（不提交，当前安排照常可查），
+        提交时按届时参数与已有预约排布，排不下会说明原因并保留原预约与发包演练。
+      </p>
+    </div>
+
+    <div class="sched-grid">
+      <div class="order-form">
+        <h3>按分支录入备份单</h3>
+        <div class="order-form-grid">
+          <label class="field"><span>分支名称</span>
+            <input id="ord-branch" type="text" maxlength="40" placeholder="如：甲分支"></label>
+          <label class="field"><span>起始分钟（0–1440）</span>
+            <input id="ord-start" type="number" min="0" max="1440" step="1" value="0"></label>
+          <label class="field"><span>结束分钟（0–1440）</span>
+            <input id="ord-end" type="number" min="1" max="1440" step="1" value="120"></label>
+          <label class="field"><span>固定报文载荷（字节）</span>
+            <input id="ord-payload" type="number" min="1" max="65535" step="1" value="1200"></label>
+          <label class="field"><span>保底速率（与带宽同单位 Mbps）</span>
+            <input id="ord-rate" type="number" min="0.001" max="10000000" step="any" value="40"></label>
+        </div>
+        <div class="row wrap">
+          <button class="btn primary" id="btnAddOrder">加单并整班重排（提交生效）</button>
+          <button class="btn" id="btnPreviewOrder">只试排这单（不提交）</button>
+          <button class="btn ghost" id="btnReplan">立即整班重排</button>
+          <button class="btn line-a-bg" id="btnDemo">灌入演示班次</button>
+          <button class="btn danger ghost" id="btnClearOrders">清空班次</button>
+        </div>
+        <div id="planPanel" class="plan-panel hidden" aria-live="polite"></div>
+      </div>
+
+      <div class="capacity-box">
+        <h3>两线容量 / 峰值占用</h3>
+        <div id="capacityBars" class="capacity-bars">
+          <p class="hint">还没有预约单。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-wrap schedule-table-wrap">
+      <table class="schedule-table">
+        <thead>
+        <tr>
+          <th>#</th><th>分支</th><th>起止分钟</th><th>对应时刻</th>
+          <th>固定载荷</th><th>保底速率</th><th>本单走线</th><th>操作</th>
+        </tr>
+        </thead>
+        <tbody id="orderRows">
+        <tr><td colspan="8" class="empty">还没有备份预约，先在上方录单，或点“灌入演示班次”。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="layout">
   <!-- 左列：参数 + 控制台 -->
   <section class="col-left">
     <div class="card">
@@ -45,6 +109,8 @@
             <input id="cfg-A-mtu" type="number" value="1500" min="1" max="65535"></label>
           <label class="field"><span>封装开销</span>
             <input id="cfg-A-overhead" type="number" value="120" min="0" max="65535"></label>
+          <label class="field"><span>可用带宽（Mbps）</span>
+            <input id="cfg-A-bandwidth" type="number" value="100" min="0.001" step="any"></label>
           <label class="check"><input id="cfg-A-notify" type="checkbox">
             <span>返回超长通知（ICMP too-big）</span></label>
         </div>
@@ -54,6 +120,8 @@
             <input id="cfg-B-mtu" type="number" value="1500" min="1" max="65535"></label>
           <label class="field"><span>封装开销</span>
             <input id="cfg-B-overhead" type="number" value="60" min="0" max="65535"></label>
+          <label class="field"><span>可用带宽（Mbps）</span>
+            <input id="cfg-B-bandwidth" type="number" value="100" min="0.001" step="any"></label>
           <label class="check"><input id="cfg-B-notify" type="checkbox" checked>
             <span>返回超长通知（ICMP too-big）</span></label>
         </div>
@@ -64,7 +132,7 @@
         <button class="btn ghost" data-preset="blackhole">预设：A 静默黑洞</button>
         <button class="btn ghost" data-preset="icmp">预设：A 有超长通知</button>
       </div>
-      <p class="hint">修改参数后需点击“应用参数并重置演练”生效。</p>
+      <p class="hint">点击后先按新 MTU/开销/带宽为上方全部已接备份单整班排线：排得下，新参数与新走线生效并重置发包演练；排不下，参数不生效，原演练与预约都保留并说明原因。</p>
     </div>
 
     <div class="card">
@@ -142,6 +210,7 @@
       <div id="timeline" class="timeline"></div>
     </div>
   </section>
+  </div><!-- /.layout -->
 </main>
 
 <footer class="footer">
@@ -153,6 +222,7 @@
       <li>每包带轮次号。投递超长通知或触发超时时，只有属于当前轮次的包能缩包；处理一次后轮次 +1，旧包的信号只记录、不缩包。</li>
       <li>已确认字节用合并区间并集维护，重叠回执新增 0 字节，不重复计数。</li>
       <li>重发 / 换线重发打包时跳过已确认区间，只携带尚未确认的连续字节，因此可能比设定载荷短或被已确认区间截断。</li>
+      <li>夜间备份排班最多 12 单，排布器枚举全部 2^12 种 A/B 分配：每单全程一线，校验 MTU 与“同时刻速率和 ≤ 可用带宽”；加单/改参都是“先整班试排、成功后原子提交”，失败保留原安排与演练。</li>
     </ul>
   </details>
 </footer>

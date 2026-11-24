@@ -18,6 +18,8 @@ def client():
 def _fresh_drill(client):
     rv = client.post("/api/reset", json={})
     assert rv.status_code == 200
+    # 排班板是独立全局状态，每个用例前一并清空，保证隔离
+    client.post("/api/schedule/clear")
     yield
 
 

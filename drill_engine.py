@@ -47,6 +47,17 @@ def _as_int(data: dict, key: str, default: int, lo: int, hi: int) -> int:
     return value
 
 
+def _as_number(data: dict, key: str, default: float, lo: float, hi: float) -> float:
+    raw = data.get(key, default)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise DrillError(f"参数 {key} 必须是数字，收到：{raw!r}")
+    if not lo < value <= hi:
+        raise DrillError(f"参数 {key} 必须在 ({lo:g}, {hi:g}] 之间，当前为 {value:g}")
+    return value
+
+
 def _as_bool(data: dict, key: str, default: bool) -> bool:
     raw = data.get(key, default)
     if isinstance(raw, bool):
@@ -68,6 +79,9 @@ class LineConfig:
     mtu: int = 1500
     overhead: int = 100
     notify: bool = False
+    # 该线路的可用带宽（Mbps，与备份预约的保底速率同单位），
+    # 供 schedule_engine 做同线并发速率求和校验。
+    bandwidth: float = 100.0
 
     @property
     def max_payload(self) -> int:
@@ -81,6 +95,7 @@ class LineConfig:
             "mtu": self.mtu,
             "overhead": self.overhead,
             "notify": self.notify,
+            "bandwidth": self.bandwidth,
             "max_payload": self.max_payload,
         }
 
@@ -101,8 +116,8 @@ class DrillConfig:
 
         raw_lines = data.get("lines") if isinstance(data.get("lines"), dict) else {}
         defaults = {
-            "A": {"mtu": 1500, "overhead": 120, "notify": False},
-            "B": {"mtu": 1500, "overhead": 60, "notify": True},
+            "A": {"mtu": 1500, "overhead": 120, "notify": False, "bandwidth": 100},
+            "B": {"mtu": 1500, "overhead": 60, "notify": True, "bandwidth": 100},
         }
         lines: dict[str, LineConfig] = {}
         for key in ("A", "B"):
@@ -115,6 +130,8 @@ class DrillConfig:
                 mtu=_as_int(merged, "mtu", defaults[key]["mtu"], 1, MAX_PAYLOAD),
                 overhead=_as_int(merged, "overhead", defaults[key]["overhead"], 0, MAX_PAYLOAD),
                 notify=_as_bool(merged, "notify", defaults[key]["notify"]),
+                bandwidth=_as_number(merged, "bandwidth",
+                                     defaults[key]["bandwidth"], 0.0, 10_000_000.0),
             )
         return DrillConfig(total, start, step, lines)
 
